@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+data/
+*.apk
+.DS_Store
+*.egg-info/
+dist/
+build/
+.env
