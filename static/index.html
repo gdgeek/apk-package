@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>APK Modifier</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <style>
+    :root { --bs-body-bg: #f8f9fa; }
+    .card { border: none; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+    .file-tree { font-family: 'SF Mono', monospace; font-size: .85rem; }
+    .file-tree ul { list-style: none; padding-left: 1.2rem; }
+    .file-tree > ul { padding-left: 0; }
+    .file-tree li { cursor: pointer; padding: 2px 4px; border-radius: 4px; }
+    .file-tree li:hover { background: #e9ecef; }
+    .file-tree .bi { margin-right: 4px; }
+    .rule-card { background: #fff; border: 1px solid #dee2e6; border-radius: 8px; padding: 1rem; margin-bottom: .75rem; }
+    .status-badge { font-size: .75rem; }
+    .upload-zone { border: 2px dashed #dee2e6; border-radius: 12px; padding: 3rem 1rem; text-align: center; cursor: pointer; transition: all .2s; }
+    .upload-zone:hover, .upload-zone.dragover { border-color: #0d6efd; background: #e7f1ff; }
+    .toast-container { z-index: 9999; }
+    #fileContent { max-height: 400px; overflow: auto; }
+    pre code { white-space: pre-wrap; word-break: break-all; }
+  </style>
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+  <div class="container">
+    <a class="navbar-brand" href="#"><i class="bi bi-box-seam"></i> APK Modifier</a>
+    <span class="navbar-text text-light small">一次上传，多次修改下载</span>
+  </div>
+</nav>
+
+<div class="container py-4">
+  <!-- Toast -->
+  <div class="toast-container position-fixed top-0 end-0 p-3">
+    <div id="toast" class="toast" role="alert">
+      <div class="toast-header"><strong class="me-auto" id="toastTitle">提示</strong><button type="button" class="btn-close" data-bs-dismiss="toast"></button></div>
+      <div class="toast-body" id="toastBody"></div>
+    </div>
+  </div>
+
+  <div class="row g-4">
+    <!-- Left: Upload + APK List -->
+    <div class="col-lg-4">
+      <div class="card mb-3">
+        <div class="card-body">
+          <h6 class="card-title mb-3"><i class="bi bi-cloud-upload"></i> 上传 APK</h6>
+          <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+            <i class="bi bi-file-earmark-arrow-up fs-1 text-muted"></i>
+            <p class="mt-2 mb-0 text-muted">点击或拖拽 APK 文件到此处</p>
+            <input type="file" id="fileInput" accept=".apk" hidden>
+          </div>
+          <div class="progress mt-2 d-none" id="uploadProgress"><div class="progress-bar progress-bar-striped progress-bar-animated" style="width:100%"></div></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h6 class="card-title mb-0"><i class="bi bi-collection"></i> 已上传 APK</h6>
+            <button class="btn btn-sm btn-outline-secondary" onclick="loadApks()"><i class="bi bi-arrow-clockwise"></i></button>
+          </div>
+          <div id="apkList"><p class="text-muted small">加载中...</p></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Middle: File Browser + Rules -->
+    <div class="col-lg-5">
+      <div class="card mb-3" id="browserCard" style="display:none">
+        <div class="card-body">
+          <h6 class="card-title"><i class="bi bi-folder2-open"></i> 文件浏览 <small class="text-muted" id="browserApkName"></small></h6>
+          <div class="row">
+            <div class="col-5 file-tree" style="max-height:350px;overflow:auto" id="fileTree"></div>
+            <div class="col-7" id="fileContent"><p class="text-muted small">选择文件查看内容</p></div>
+          </div>
+        </div>
+      </div>
+      <div class="card" id="rulesCard" style="display:none">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h6 class="card-title mb-0"><i class="bi bi-pencil-square"></i> 替换规则</h6>
+            <div class="btn-group btn-group-sm">
+              <button class="btn btn-outline-primary" onclick="addRule('script')"><i class="bi bi-file-code"></i> 脚本</button>
+              <button class="btn btn-outline-success" onclick="addRule('image')"><i class="bi bi-image"></i> 图片</button>
+            </div>
+          </div>
+          <div id="rulesList"></div>
+          <button class="btn btn-primary w-100 mt-2" onclick="submitTask()"><i class="bi bi-play-fill"></i> 创建修改任务</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Tasks -->
+    <div class="col-lg-3">
+      <div class="card">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h6 class="card-title mb-0"><i class="bi bi-list-task"></i> 任务列表</h6>
+            <button class="btn btn-sm btn-outline-secondary" onclick="loadTasks()"><i class="bi bi-arrow-clockwise"></i></button>
+          </div>
+          <div id="taskList"><p class="text-muted small">选择 APK 后显示任务</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+const API = '';
+let currentApkId = null;
+let rules = [];
+
+// Toast
+function showToast(title, msg, type='info') {
+  const t = document.getElementById('toast');
+  t.className = 'toast';
+  t.classList.add(type === 'error' ? 'bg-danger' : type === 'success' ? 'bg-success' : 'bg-info', 'text-white');
+  document.getElementById('toastTitle').textContent = title;
+  document.getElementById('toastBody').textContent = msg;
+  bootstrap.Toast.getOrCreateInstance(t).show();
+}
+
+// Upload
+const zone = document.getElementById('uploadZone');
+zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
+zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+zone.addEventListener('drop', e => { e.preventDefault(); zone.classList.remove('dragover'); if(e.dataTransfer.files[0]) uploadFile(e.dataTransfer.files[0]); });
+document.getElementById('fileInput').addEventListener('change', e => { if(e.target.files[0]) uploadFile(e.target.files[0]); });
+
+async function uploadFile(file) {
+  const prog = document.getElementById('uploadProgress');
+  prog.classList.remove('d-none');
+  const fd = new FormData(); fd.append('file', file);
+  try {
+    const r = await fetch(`${API}/api/v1/apks`, { method: 'POST', body: fd });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error?.message || '上传失败');
+    showToast('上传成功', `APK ID: ${d.apk_id}`, 'success');
+    loadApks();
+    selectApk(d.apk_id, d.filename);
+  } catch(e) { showToast('上传失败', e.message, 'error'); }
+  finally { prog.classList.add('d-none'); }
+}
+
+// APK List
+async function loadApks() {
+  try {
+    const r = await fetch(`${API}/api/v1/apks`);
+    const d = await r.json();
+    const el = document.getElementById('apkList');
+    if (!d.apks?.length) { el.innerHTML = '<p class="text-muted small">暂无 APK</p>'; return; }
+    el.innerHTML = d.apks.map(a => `
+      <div class="d-flex align-items-center justify-content-between py-2 border-bottom">
+        <div class="text-truncate me-2" style="cursor:pointer" onclick="selectApk('${a.apk_id}','${a.filename}')">
+          <i class="bi bi-android2 text-success"></i>
+          <span class="small">${a.filename}</span>
+          <span class="badge bg-secondary status-badge ms-1">${a.task_count} 任务</span>
+        </div>
+        <button class="btn btn-sm btn-outline-danger flex-shrink-0" onclick="deleteApk('${a.apk_id}')"><i class="bi bi-trash"></i></button>
+      </div>
+    `).join('');
+  } catch(e) { showToast('错误', e.message, 'error'); }
+}
+
+async function deleteApk(id) {
+  if (!confirm('确定删除？')) return;
+  await fetch(`${API}/api/v1/apks/${id}`, { method: 'DELETE' });
+  if (currentApkId === id) { currentApkId = null; document.getElementById('browserCard').style.display='none'; document.getElementById('rulesCard').style.display='none'; }
+  loadApks();
+}
+
+// Select APK
+async function selectApk(id, name) {
+  currentApkId = id; rules = [];
+  document.getElementById('browserCard').style.display = '';
+  document.getElementById('rulesCard').style.display = '';
+  document.getElementById('browserApkName').textContent = name || id;
+  document.getElementById('rulesList').innerHTML = '';
+  document.getElementById('fileContent').innerHTML = '<p class="text-muted small">选择文件查看内容</p>';
+  loadFileTree(); loadTasks();
+}
+
+// File Tree
+async function loadFileTree() {
+  try {
+    const r = await fetch(`${API}/api/v1/apks/${currentApkId}/files`);
+    const d = await r.json();
+    document.getElementById('fileTree').innerHTML = '<ul>' + renderTree(d.files) + '</ul>';
+  } catch(e) { document.getElementById('fileTree').innerHTML = '<p class="text-danger small">加载失败</p>'; }
+}
+
+function renderTree(nodes) {
+  return nodes.map(n => {
+    if (n.is_directory) {
+      return `<li><i class="bi bi-folder-fill text-warning"></i>${n.name}<ul>${renderTree(n.children)}</ul></li>`;
+    }
+    return `<li onclick="viewFile('${n.path}');event.stopPropagation()"><i class="bi bi-file-text text-primary"></i>${n.name}</li>`;
+  }).join('');
+}
+
+async function viewFile(path) {
+  try {
+    const r = await fetch(`${API}/api/v1/apks/${currentApkId}/files/${path}`);
+    const d = await r.json();
+    if (d.content !== undefined) {
+      document.getElementById('fileContent').innerHTML = `<div class="small text-muted mb-1">${path}</div><pre class="bg-light p-2 rounded" style="font-size:.8rem"><code>${escHtml(d.content)}</code></pre>`;
+    } else {
+      document.getElementById('fileContent').innerHTML = '<p class="text-warning small">无法读取（可能是二进制文件）</p>';
+    }
+  } catch(e) { document.getElementById('fileContent').innerHTML = '<p class="text-danger small">读取失败</p>'; }
+}
+
+function escHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+// Rules
+function addRule(type) {
+  const idx = rules.length;
+  if (type === 'script') {
+    rules.push({ type:'script', target_path:'', pattern:'', replacement:'', use_regex:false });
+  } else {
+    rules.push({ type:'image', target_path:'', image_data:'' });
+  }
+  renderRules();
+}
+
+function renderRules() {
+  const el = document.getElementById('rulesList');
+  el.innerHTML = rules.map((r, i) => {
+    if (r.type === 'script') return `
+      <div class="rule-card">
+        <div class="d-flex justify-content-between mb-2">
+          <span class="badge bg-primary">脚本替换 #${i+1}</span>
+          <button class="btn btn-sm btn-outline-danger" onclick="rules.splice(${i},1);renderRules()"><i class="bi bi-x"></i></button>
+        </div>
+        <input class="form-control form-control-sm mb-1" placeholder="目标路径 (如 res/values/strings.xml)" value="${escAttr(r.target_path)}" onchange="rules[${i}].target_path=this.value">
+        <input class="form-control form-control-sm mb-1" placeholder="匹配文本" value="${escAttr(r.pattern)}" onchange="rules[${i}].pattern=this.value">
+        <input class="form-control form-control-sm mb-1" placeholder="替换文本" value="${escAttr(r.replacement)}" onchange="rules[${i}].replacement=this.value">
+        <div class="form-check"><input class="form-check-input" type="checkbox" ${r.use_regex?'checked':''} onchange="rules[${i}].use_regex=this.checked"><label class="form-check-label small">正则表达式</label></div>
+      </div>`;
+    return `
+      <div class="rule-card">
+        <div class="d-flex justify-content-between mb-2">
+          <span class="badge bg-success">图片替换 #${i+1}</span>
+          <button class="btn btn-sm btn-outline-danger" onclick="rules.splice(${i},1);renderRules()"><i class="bi bi-x"></i></button>
+        </div>
+        <input class="form-control form-control-sm mb-1" placeholder="目标路径 (如 res/drawable/icon.png)" value="${escAttr(r.target_path)}" onchange="rules[${i}].target_path=this.value">
+        <input class="form-control form-control-sm mb-1" type="file" accept="image/*" onchange="readImg(this,${i})">
+      </div>`;
+  }).join('') || '<p class="text-muted small">点击上方按钮添加规则</p>';
+}
+
+function escAttr(s) { return s.replace(/"/g, '&quot;'); }
+
+function readImg(input, idx) {
+  const file = input.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => { rules[idx].image_data = reader.result.split(',')[1]; };
+  reader.readAsDataURL(file);
+}
+
+// Tasks
+async function submitTask() {
+  if (!currentApkId) return showToast('提示', '请先选择 APK', 'error');
+  if (!rules.length) return showToast('提示', '请添加至少一条规则', 'error');
+  try {
+    const r = await fetch(`${API}/api/v1/tasks`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ apk_id: currentApkId, rules })
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error?.message || JSON.stringify(d.error?.details));
+    showToast('任务已创建', `Task ID: ${d.task_id}`, 'success');
+    pollTask(d.task_id);
+    loadTasks();
+  } catch(e) { showToast('创建失败', e.message, 'error'); }
+}
+
+async function pollTask(taskId) {
+  for (let i = 0; i < 60; i++) {
+    await new Promise(r => setTimeout(r, 1000));
+    const r = await fetch(`${API}/api/v1/tasks/${taskId}`);
+    const d = await r.json();
+    if (d.status === 'completed') { showToast('任务完成', '可以下载了', 'success'); loadTasks(); return; }
+    if (d.status === 'failed') { showToast('任务失败', d.error || '未知错误', 'error'); loadTasks(); return; }
+  }
+}
+
+async function loadTasks() {
+  const el = document.getElementById('taskList');
+  if (!currentApkId) { el.innerHTML = '<p class="text-muted small">选择 APK 后显示任务</p>'; return; }
+  try {
+    const r = await fetch(`${API}/api/v1/apks/${currentApkId}/tasks`);
+    const d = await r.json();
+    if (!d.tasks?.length) { el.innerHTML = '<p class="text-muted small">暂无任务</p>'; return; }
+    el.innerHTML = d.tasks.map(t => {
+      const colors = { pending:'warning', processing:'info', completed:'success', failed:'danger' };
+      const labels = { pending:'等待中', processing:'处理中', completed:'已完成', failed:'失败' };
+      return `
+        <div class="d-flex align-items-center justify-content-between py-2 border-bottom">
+          <div>
+            <span class="badge bg-${colors[t.status]} status-badge">${labels[t.status]}</span>
+            <span class="small text-muted ms-1">${t.task_id.slice(0,8)}...</span>
+          </div>
+          ${t.status === 'completed' ? `<a href="${API}/api/v1/download/${t.task_id}" class="btn btn-sm btn-outline-success"><i class="bi bi-download"></i></a>` : ''}
+        </div>`;
+    }).join('');
+  } catch(e) { el.innerHTML = '<p class="text-danger small">加载失败</p>'; }
+}
+
+// Init
+loadApks();
+</script>
+</body>
+</html>

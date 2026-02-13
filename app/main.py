@@ -2,10 +2,12 @@
 
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.routers.apk_router import router as apk_router
 from app.routers.task_router import router as task_router
@@ -62,3 +64,13 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}
+
+
+# 静态文件 & UI 首页
+static_dir = Path(__file__).resolve().parent.parent / "static"
+if static_dir.is_dir():
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+    @app.get("/")
+    async def ui_index():
+        return FileResponse(str(static_dir / "index.html"))
